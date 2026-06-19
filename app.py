@@ -1,91 +1,102 @@
 import streamlit as st
 import pickle
 import numpy as np
-import pandas as pd
 
 # Load model
 model = pickle.load(open("model.pkl", "rb"))
 
-# Load dataset
-df = pd.read_csv("dataset.csv")
-df.rename(columns={"Disease": "disease"}, inplace=True)
-
-# Extract symptoms
-symptoms = set()
-for col in df.columns[1:]:
-    symptoms.update(df[col].dropna().unique())
-
-symptoms = sorted(list(symptoms))
-
-# ---------------- UI ----------------
-
 st.title("🩺 AI Health Risk & Suggestion System")
+st.caption("🤖 Model: Random Forest Classifier")
 
-st.write("⚠️ This system provides suggestions only and is not a medical diagnosis.")
+st.warning("⚠️ This system provides suggestions only and is not a medical diagnosis.")
 
-st.subheader("👤 Enter Your Details")
+# ---------------- INPUT ----------------
 
-age = st.slider("Age", 1, 100, 25)
+age = st.slider("Age", 1, 100)
 gender = st.selectbox("Gender", ["Male", "Female"])
-
 severity = st.selectbox("Symptom Severity", ["Mild", "Moderate", "Severe"])
 duration = st.selectbox("Duration of Symptoms", ["1-2 days", "3-5 days", "More than 5 days"])
 
-st.subheader("🤒 Select Your Symptoms")
+# ---------------- SYMPTOMS ----------------
 
-selected_symptoms = []
+symptoms_list = [
+    "fever", "cough", "headache", "fatigue",
+    "chest_pain", "breathlessness",
+    "high_fever", "body_pain",
+    "itching", "skin_rash",
+    "yellowing_of_eyes", "yellowish_skin",
+    "vomiting", "dizziness",
+    "nausea", "loss_of_appetite",
+    "sweating", "chills",
+    "abdominal_pain", "runny_nose"
+]
 
-for symptom in symptoms:
-    if st.checkbox(symptom):
-        selected_symptoms.append(symptom)
+selected_symptoms = st.multiselect("Select Your Symptoms", symptoms_list)
 
-if selected_symptoms:
-    st.write("Selected Symptoms:", selected_symptoms)
+# ---------------- INPUT VECTOR ----------------
 
-# ---------------- Prediction ----------------
+input_data = np.zeros((1, len(symptoms_list)))
+
+for symptom in selected_symptoms:
+    if symptom in symptoms_list:
+        input_data[0][symptoms_list.index(symptom)] = 1
+
+# ---------------- PREDICT ----------------
 
 if st.button("Predict"):
 
-    # Create input vector
-    input_vector = [0] * len(symptoms)
+    prediction = model.predict(input_data)[0]
 
-    for symptom in selected_symptoms:
-        index = symptoms.index(symptom)
-        input_vector[index] = 1
+    # Risk logic
+    count = len(selected_symptoms)
 
-    input_array = np.array([input_vector])
-
-    prediction = model.predict(input_array)[0]
-
-    # ---------------- Risk Logic ----------------
-
-    risk = "Low 🟢"
-
-    if severity == "Moderate" or duration == "3-5 days":
+    if count >= 6:
+        risk = "High 🔴"
+    elif count >= 3:
         risk = "Medium 🟡"
+    else:
+        risk = "Low 🟢"
 
-    if severity == "Severe" or duration == "More than 5 days":
+    # Rule-based correction
+    if "yellowing_of_eyes" in selected_symptoms or "yellowish_skin" in selected_symptoms:
+        prediction = "Jaundice"
         risk = "High 🔴"
 
-    # ---------------- Suggestions ----------------
+    elif "chest_pain" in selected_symptoms and "breathlessness" in selected_symptoms:
+        prediction = "Heart Issue"
+        risk = "High 🔴"
 
-    suggestions = {
-        "Fungal infection": "Keep skin clean and dry. Use antifungal cream.",
-        "Allergy": "Avoid allergens. Take antihistamines.",
-        "Cold": "Take rest and drink warm fluids.",
-        "Flu": "Take rest, fluids, and paracetamol.",
-        "Acne": "Maintain hygiene and avoid oily foods.",
-        "Migraine": "Avoid stress and take proper sleep.",
-        "Heart Disease": "Consult a doctor immediately.",
-        "Asthma": "Use inhaler and avoid dust.",
-        "Dengue": "Consult doctor and stay hydrated.",
-        "Malaria": "Seek medical treatment immediately."
-    }
+    elif "high_fever" in selected_symptoms and "body_pain" in selected_symptoms:
+        prediction = "Viral Fever"
 
-    recommendation = suggestions.get(prediction, "Consult a doctor for proper diagnosis.")
+    elif "itching" in selected_symptoms and "skin_rash" in selected_symptoms:
+        prediction = "Skin Allergy"
 
-    # ---------------- Output ----------------
+    elif "vomiting" in selected_symptoms and "nausea" in selected_symptoms:
+        prediction = "Food Poisoning"
 
-    st.success(f"🩺 Possible Condition: {prediction}")
-    st.warning(f"⚠️ Risk Level: {risk}")
-    st.info(f"💡 Recommendation: {recommendation}")
+    elif "runny_nose" in selected_symptoms and "cough" in selected_symptoms:
+        prediction = "Common Cold"
+
+    # Recommendations
+    if "Heart" in prediction:
+        recommendation = "⚠️ Seek immediate medical attention"
+
+    elif "Jaundice" in prediction:
+        recommendation = "Avoid oily food, consult doctor"
+
+    elif "Fever" in prediction:
+        recommendation = "Take rest, drink fluids"
+
+    else:
+        recommendation = "Consult doctor if symptoms persist"
+
+    # Output
+    st.subheader("🩺 Possible Condition:")
+    st.success(prediction)
+
+    st.subheader("⚠️ Risk Level:")
+    st.warning(risk)
+
+    st.subheader("💡 Recommendation:")
+    st.info(recommendation)
